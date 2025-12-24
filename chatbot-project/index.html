@@ -36,6 +36,12 @@ header{
 }
 header b{font-size:15px}
 header span{font-size:12px;color:var(--muted)}
+.statusLine{
+  font-size:12px;
+  color:var(--muted);
+  padding:10px 18px;
+  border-bottom:1px solid var(--border);
+}
 .messages{
   flex:1; padding:16px; overflow:auto;
   display:flex; flex-direction:column; gap:10px;
@@ -122,150 +128,164 @@ button:disabled{opacity:.6; cursor:not-allowed}
       <b>Hamzawy Chatbot</b><br>
       <span>Simple Chatbot</span>
     </div>
-    <button class="clear" id="clear">Clear</button>
+    <button class="clear" id="clear" type="button">Clear</button>
   </header>
+
+  <div class="statusLine" id="status">Loading…</div>
 
   <div class="messages" id="messages"></div>
 
   <footer>
     <textarea id="input" placeholder="Type your message... (Enter to send, Shift+Enter newline)"></textarea>
-    <button id="send">Send</button>
+    <button id="send" type="button">Send</button>
   </footer>
 </div>
 
 <script>
-  // Calls your Vercel serverless function at /api/chat
-  const API_URL = "/api/chat";
-  const MODEL = "gpt-4o-mini";
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const API_URL = "/api/chat";
+    const MODEL = "gpt-4o-mini";
 
-  const messages = document.getElementById("messages");
-  const input = document.getElementById("input");
-  const sendBtn = document.getElementById("send");
+    const statusEl = document.getElementById("status");
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const clearBtn = document.getElementById("clear");
 
-  let chat = JSON.parse(localStorage.getItem("chat") || "[]");
-  let typingEl = null;
+    statusEl.textContent = "JS Loaded ✅";
 
-  function addBubble(role, content, extraClass=""){
-    const div = document.createElement("div");
-    div.className = "msg " + (role === "user" ? "me" : "bot") + (extraClass ? " " + extraClass : "");
-    div.textContent = content;
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-  }
+    let chat = JSON.parse(localStorage.getItem("chat") || "[]");
+    let typingEl = null;
 
-  function render(){
-    messages.innerHTML = "";
-    chat.forEach(m => addBubble(m.role, m.content));
-    messages.scrollTop = messages.scrollHeight;
-  }
-  render();
-
-  function showTyping(){
-    if (typingEl) return;
-    typingEl = document.createElement("div");
-    typingEl.className = "typing";
-    typingEl.innerHTML = "<span></span><span></span><span></span>";
-    messages.appendChild(typingEl);
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  function hideTyping(){
-    if(typingEl){
-      typingEl.remove();
-      typingEl = null;
+    function addBubble(role, content, extraClass=""){
+      const div = document.createElement("div");
+      div.className = "msg " + (role === "user" ? "me" : "bot") + (extraClass ? " " + extraClass : "");
+      div.textContent = content;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
     }
-  }
 
-  document.getElementById("clear").onclick = ()=>{
-    chat = [];
-    localStorage.removeItem("chat");
+    function render(){
+      messages.innerHTML = "";
+      chat.forEach(m => addBubble(m.role, m.content));
+      messages.scrollTop = messages.scrollHeight;
+    }
     render();
-  };
 
-  function extractText(data){
-    const blocks = data?.output?.[0]?.content || [];
-    const txt = blocks
-      .filter(b => b.type === "output_text" && typeof b.text === "string")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
-    if (txt) return txt;
-
-    if (typeof data?.output_text === "string" && data.output_text.trim()) {
-      return data.output_text.trim();
+    function showTyping(){
+      if (typingEl) return;
+      typingEl = document.createElement("div");
+      typingEl.className = "typing";
+      typingEl.innerHTML = "<span></span><span></span><span></span>";
+      messages.appendChild(typingEl);
+      messages.scrollTop = messages.scrollHeight;
     }
 
-    return "";
-  }
+    function hideTyping(){
+      if(typingEl){
+        typingEl.remove();
+        typingEl = null;
+      }
+    }
 
-  async function sendMessageToAPI(userText){
-    const payload = {
-      model: MODEL,
-      input: [
-        { role: "system", content: "You are a helpful assistant." },
-        ...chat.map(m => ({ role: m.role, content: m.content })),
-        { role: "user", content: userText }
-      ]
-    };
-
-    const res = await fetch(API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+    clearBtn.addEventListener("click", () => {
+      chat = [];
+      localStorage.removeItem("chat");
+      render();
+      statusEl.textContent = "Cleared ✅";
     });
 
-    const rawText = await res.text();
-    let data = null;
-    try { data = JSON.parse(rawText); } catch {}
-
-    if(!res.ok){
-      const msg = data?.error?.message || rawText || ("HTTP " + res.status);
-      throw new Error(`API Error (${res.status}): ${msg}`);
+    function extractText(data){
+      const blocks = data?.output?.[0]?.content || [];
+      const txt = blocks
+        .filter(b => b.type === "output_text" && typeof b.text === "string")
+        .map(b => b.text)
+        .join("\n")
+        .trim();
+      if (txt) return txt;
+      if (typeof data?.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+      return "";
     }
 
-    const out = extractText(data);
-    if(!out) throw new Error("API returned no text. (Check function response)");
-    return out;
-  }
+    async function sendMessageToAPI(userText){
+      const payload = {
+        model: MODEL,
+        input: [
+          { role: "system", content: "You are a helpful assistant." },
+          ...chat.map(m => ({ role: m.role, content: m.content })),
+          { role: "user", content: userText }
+        ]
+      };
 
-  async function handleSend(){
-    const text = input.value.trim();
-    if(!text) return;
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
 
-    input.value = "";
-    chat.push({ role:"user", content:text });
-    localStorage.setItem("chat", JSON.stringify(chat));
-    render();
+      const rawText = await res.text();
+      let data = null;
+      try { data = JSON.parse(rawText); } catch {}
 
-    sendBtn.disabled = true;
-    input.disabled = true;
-    showTyping();
+      if(!res.ok){
+        const msg = data?.error?.message || rawText || ("HTTP " + res.status);
+        throw new Error(`API Error (${res.status}): ${msg}`);
+      }
 
-    try{
-      const reply = await sendMessageToAPI(text);
-      hideTyping();
-      chat.push({ role:"assistant", content:reply });
+      const out = extractText(data);
+      if(!out) throw new Error("API returned no text.");
+      return out;
+    }
+
+    async function handleSend(){
+      const text = input.value.trim();
+      if(!text) return;
+
+      input.value = "";
+      chat.push({ role:"user", content:text });
       localStorage.setItem("chat", JSON.stringify(chat));
       render();
-    }catch(err){
-      console.error(err);
-      hideTyping();
-      addBubble("assistant", "❌ " + err.message, "err");
-    }finally{
-      sendBtn.disabled = false;
-      input.disabled = false;
-      input.focus();
+
+      sendBtn.disabled = true;
+      input.disabled = true;
+      showTyping();
+      statusEl.textContent = "Sending…";
+
+      try{
+        const reply = await sendMessageToAPI(text);
+        hideTyping();
+        chat.push({ role:"assistant", content:reply });
+        localStorage.setItem("chat", JSON.stringify(chat));
+        render();
+        statusEl.textContent = "Ready ✅";
+      }catch(err){
+        console.error(err);
+        hideTyping();
+        addBubble("assistant", "❌ " + err.message, "err");
+        statusEl.textContent = "Error ❌ (open Console)";
+      }finally{
+        sendBtn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      }
     }
+
+    sendBtn.addEventListener("click", handleSend);
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey){
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+  } catch (e) {
+    // لو حصل أي خطأ يمنع تشغيل السكريبت كله، نعرضه
+    const statusEl = document.getElementById("status");
+    if (statusEl) statusEl.textContent = "JS Crash ❌: " + e.message;
   }
-
-  sendBtn.addEventListener("click", handleSend);
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey){
-      e.preventDefault();
-      handleSend();
-    }
-  });
+});
 </script>
 </body>
 </html>
